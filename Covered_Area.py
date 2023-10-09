@@ -131,6 +131,7 @@ class MainClass(object):
             i = cv2.cvtColor(i, cv2.COLOR_BGR2RGB)
             self.img_o = i.copy()
 
+            self.lLocal.config(text="Arquio: "+str(self.root.filename))
             self.bProcessar.config(state="normal")
             self.bCalcular.config(state="disabled")
             self.bGravar.config(state="disabled")
@@ -193,7 +194,10 @@ class MainClass(object):
         i = cv2.cvtColor(i, cv2.COLOR_RGB2LAB)
         a = i[:, :, 1]
         th = cv2.threshold(a,127,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1]
-        c, h = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        kernel = np.ones((5,5),np.uint8)
+        i_close = cv2.morphologyEx(th, cv2.MORPH_CLOSE, kernel)
+        c_raw, h = cv2.findContours(i_close, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        c = self.filter_c(c_raw)
         
         i_marcada = img.copy()
 
@@ -318,6 +322,27 @@ class MainClass(object):
         self.showImg(i_o_l, self.lLigante)
         self.showImg(i_o_b, self.lBrilho)
 
+    def filter_c(self, contours_c):
+        
+        lenghts = []
+
+        for i in contours_c:
+            lenghts.append(len(i))
+
+        q1 = np.percentile(np.array(lenghts), 25)
+        q3 = np.percentile(np.array(lenghts), 75)
+        diff = q3-q1
+        factor = 1.5
+        threshold = q1-(factor*diff)
+        
+        c_copy = np.copy(contours_c)
+        for i, c in enumerate(contours_c):
+            if lenghts[i] < threshold or lenghts[i] == threshold:
+                c_copy[i] = None
+
+        c_filtered = [c for c in c_copy if c is not None]
+        return c_filtered
+
     def calcular(self):
         self.contar_pixel(self.list_contours, self.img_find_agr, 1)
         self.contar_pixel(self.list_contours, self.img_count_lig, 2)
@@ -349,7 +374,7 @@ class MainClass(object):
 
     def gravar(self):
         pasta_armazenar = str(self.ePasta.get()).strip()
-        if(len(pasta_armazenar) > 0 and not self.tem_caracter_especial(pasta_armazenar)):
+        if(len(pasta_armazenar) > 0): #removed  and not self.tem_caracter_especial(pasta_armazenar)
             self.ePasta.config(bg="#90ee90")
             img_or = cv2.cvtColor(self.img_o.copy(), cv2.COLOR_RGB2BGR)
             img_ma = cv2.cvtColor(self.img_find_mrc.copy(), cv2.COLOR_RGB2BGR)
@@ -369,7 +394,7 @@ class MainClass(object):
             data_hora_formatada = agora.strftime("%d-%m-%Y_%H-%M-%S")
             df = pd.DataFrame({'Id': self.id, 'Pixels Agregados': self.nAgreg, 'Pixels Ligante': self.nLigan, 'Pixels Brilho': self.nBrilh, 'Cobrimento': self.nCobrimento, 'Estatistica': self.estatistic, 'Legenda': legenda})
             
-            pasta2 = f"{self.pasta}/{pasta_armazenar}_{data_hora_formatada}"
+            pasta2 = f"{pasta_armazenar}/{data_hora_formatada}"
 
             if not (os.path.exists(pasta2)):
                 os.mkdir(pasta2)
@@ -401,6 +426,7 @@ class MainClass(object):
 
     def tem_caracter_especial(self, string):
         pattern = r'[^a-zA-Z0-9\s]'  # Padrão para verificar se há caracteres especiais
+        print(bool(re.search(pattern, string)))
         return bool(re.search(pattern, string))
 
 if __name__ == '__main__':
